@@ -1,89 +1,237 @@
 # Job Scheduler & Automation System
 
-A full-stack job scheduling application built with React, Node.js, Express, and PostgreSQL (compatible with MySQL requirements).
+## Overview
 
-## Features
+This project is a **mini Job Scheduler & Automation System** inspired by real-world background task engines used in modern software systems.  
+Such systems are commonly responsible for running asynchronous tasks like sending emails, generating reports, syncing data, and triggering integrations.
 
-- **Create Jobs**: Submit tasks with specific payloads and priorities.
-- **Job Dashboard**: View all jobs, filter by status and priority.
-- **Job Runner**: Simulate async background processing (3-second delay).
-- **Webhook Integration**: Automatically triggers an external webhook upon job completion.
-- **Real-time Status**: Track jobs from `pending` -> `running` -> `completed`.
+The application allows users to **create jobs**, **execute them**, **track their lifecycle**, and **notify external systems via webhooks** once a job is completed.
+
+This project was built as part of a **Full Stack Developer skill test**, with a strong focus on **clean architecture, logical flow, and production-ready practices** rather than just feature completion.
+
+---
+
+##  Key Features
+
+- Create background jobs with priority and custom payload
+- Persist jobs in a MySQL database
+- Job lifecycle management:
+  - `pending → running → completed`
+- Simulated background job execution
+- Automatic webhook trigger on job completion
+- Interactive React dashboard
+- Filter jobs by status and priority
+- View detailed job information with formatted JSON payload
+- Clean REST API design
+- Clear separation of frontend and backend responsibilities
+
+---
 
 ## Tech Stack
 
-- **Frontend**: React, Tailwind CSS, Shadcn UI, Vite
-- **Backend**: Node.js, Express
-- **Database**: PostgreSQL (via Drizzle ORM)
-- **Language**: TypeScript
+### Frontend
+- React.js
+- Tailwind CSS
+- Axios
+- React Router
 
-## Setup Instructions
+### Backend
+- Node.js
+- Express.js
+- REST APIs
 
-1. **Install Dependencies**:
-   ```bash
-   npm install
-   ```
+### Database
+- MySQL
 
-2. **Database Setup**:
-   The project is configured to use a managed PostgreSQL database.
-   Schema is managed via Drizzle ORM.
-   ```bash
-   npm run db:push
-   ```
+### Integrations
+- Webhook trigger using Axios
+- External testing via webhook.site
 
-3. **Start the Application**:
-   ```bash
-   npm run dev
-   ```
-   The application will be available at `http://localhost:5000`.
+---
 
-## Architecture
+##  Architecture Overview
+React Frontend
+│
+│ REST APIs
+↓
+Node.js + Express Backend
+│
+│ SQL Queries
+↓
+MySQL Database
+│
+│ Webhook POST
+↓
+External System (webhook.site)
 
-The project follows a clean MVC-style architecture:
 
-- `client/`: React frontend with components and pages.
-- `server/`: Express backend.
-  - `routes.ts`: API route definitions and simulation logic.
-  - `storage.ts`: Data access layer (Separation of Concerns).
-  - `db.ts`: Database connection.
-- `shared/`: Shared TypeScript types and schema definitions (Single Source of Truth).
+### Design Philosophy
+- Single source of truth for job state (database)
+- Backend controls all job status transitions
+- Frontend acts purely as a consumer of APIs
+- Clear separation of concerns
+- Minimal but realistic simulation of background processing
 
-## API Documentation
+---
 
-### Jobs
+## 🗄️ Database Schema
 
-- **GET /api/jobs**
-  - List all jobs.
-  - Query Params: `status` (pending, running, completed), `priority` (Low, Medium, High).
-  
-- **POST /api/jobs**
-  - Create a new job.
-  - Body: `{ taskName: string, priority: string, payload: json }`
+### `jobs` Table
 
-- **GET /api/jobs/:id**
-  - Get job details.
+| Column Name  | Type                              | Description |
+|-------------|-----------------------------------|-------------|
+| id          | INT (PK, Auto Increment)          | Job ID |
+| taskName    | VARCHAR(255)                      | Job name |
+| payload     | JSON                              | Custom job data |
+| priority    | ENUM(Low, Medium, High)           | Job priority |
+| status      | ENUM(pending, running, completed) | Job lifecycle state |
+| createdAt   | TIMESTAMP                         | Job creation time |
+| updatedAt   | TIMESTAMP                         | Last update time |
+| completedAt | TIMESTAMP (nullable)              | Completion time |
 
-- **POST /api/run-job/:id**
-  - Run a pending job.
-  - Simulates 3s processing time then marks as completed.
+---
 
-### Webhooks
+##  API Documentation
 
-- The system triggers a POST request to `WEBHOOK_URL` (or a default test URL) when a job completes.
-- Payload:
-  ```json
+### Create Job
+**POST** `/jobs`
+
+```json
+{
+  "taskName": "Generate Report",
+  "payload": { "reportId": 101 },
+  "priority": "High"
+}
+
+```
+## List Jobs
+
+GET /jobs
+
+Retrieves all jobs from the database.
+Supports optional filtering by status and priority.
+
+Query Parameters (Optional)
+Parameter	Description	         Example
+status	   Filter by job status	pending / running / completed
+priority	   Filter by priority	Low / Medium / High
+
+Example Requests
+GET /jobs
+GET /jobs?status=completed
+GET /jobs?status=pending&priority=High
+
+```[
   {
-    "jobId": 123,
-    "taskName": "My Task",
-    "status": "completed",
-    "completedAt": "2024-03-20T10:00:00Z"
+    "id": 1,
+    "taskName": "Send Email",
+    "payload": { "email": "user@example.com" },
+    "priority": "High",
+    "status": "pending",
+    "createdAt": "2026-02-02T09:10:00.000Z",
+    "updatedAt": "2026-02-02T09:10:00.000Z",
+    "completedAt": null
   }
-  ```
+]
+```
+## Get Job Details
 
+GET /jobs/:id
+
+Fetches complete information for a single job, including payload and timestamps.
+
+Run Job
+
+POST /jobs/run-job/:id
+
+Simulates background job execution.
+
+Flow
+
+Validates job exists
+
+Allows execution only if status is pending
+
+Updates status → running
+
+Simulates processing for 3 seconds
+
+Updates status → completed
+
+Saves completion timestamp
+
+Triggers webhook
+
+## Webhook Integration
+
+When a job reaches the completed state, the backend automatically sends a POST request to a configured webhook URL.
+
+Webhook Payload
+```{
+  "jobId": 3,
+  "taskName": "Generate Report",
+  "priority": "High",
+  "payload": { "reportId": 101 },
+  "completedAt": "2026-02-02T10:30:00Z"
+}
+```
+## Frontend Dashboard
+
+The React dashboard provides:
+
+Job listing table
+
+Status and priority filters
+
+“Run Job” button (visible only for pending jobs)
+
+Real-time status updates
+
+Job detail view with prettified JSON payload
+
+The UI is intentionally minimal and focused on clarity, usability, and correctness.
+## Setup Instructions
+### Prerequisites
+
+Node.js (v18+ recommended)
+
+MySQL
+
+Git
+## Backend Setup
+```
+cd backend
+npm install
+```
+Create a .env file:
+```
+PORT=5000
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=your_password
+DB_NAME=job_scheduler
+WEBHOOK_URL=https://webhook.site/YOUR-ID
+```
+Run backend:
+```
+npm run dev
+```
+Frontend Setup
+```
+cd frontend
+npm install
+npm run dev
+```
+## Environment & Security Notes
+- Sensitive configuration is stored in environment variables
+- .env file is excluded from version control
+- Backend validates inputs before processing
+- Job state transitions are strictly controlled
 ## AI Usage Disclosure
+AI tools (ChatGPT) were used selectively during development for:
+-Clarifying assignment requirements
+-Reviewing API design approaches
+-Debugging isolated implementation issues
 
-This project was assisted by Replit Agent (using Large Language Models) to accelerate development.
+All architecture decisions, business logic, folder structure, and final implementation were understood, reviewed, and written intentionally by the author.
 
-- **Frontend**: UI components and layout were generated based on high-level specifications.
-- **Backend**: Boilerplate code for Express routes and Database connections was generated.
-- **Logic**: The simulation logic and webhook trigger were implemented based on the prompt requirements.
