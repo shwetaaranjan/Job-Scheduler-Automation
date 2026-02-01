@@ -1,0 +1,693 @@
+# Dotix - Assignment reference Document
+
+## Job Scheduler & Automation System
+
+---
+
+## 1. Objective
+
+### 1.1 Project Goal
+
+The objective of this project is to build a **mini job scheduling and automation system** that allows users to:
+
+- Create background jobs (tasks)
+- Store jobs in a database
+- Run jobs manually
+- Track job status (Pending → Running → Completed)
+- Trigger a webhook automatically when a job completes
+
+This project evaluates your **full-stack understanding**, including:
+
+- Frontend (UI & user interaction)
+- Backend (APIs & logic)
+- Database (data storage)
+- Integrations (webhooks)
+- Project structure & documentation
+
+### 1.2 Real-World Context
+
+In real companies, such systems are used for:
+
+- Sending scheduled emails
+- Generating reports
+- Syncing data between systems
+- Running background processes
+
+---
+
+## 2. Technical Requirements
+
+### 2.1 Frontend Requirements
+
+You need a user interface where users can:
+
+- Create a job
+- View all jobs in a table
+- Filter jobs by status and priority
+- Run a job
+- View job details
+
+**Recommended Tools:**
+
+- React or Next.js (Next.js preferred)
+- Tailwind CSS (for styling)
+- Shadcn UI (optional component library)
+
+### 2.2 Backend Requirements
+
+The backend should:
+
+- Expose REST APIs
+- Handle job creation and execution
+- Simulate background processing
+- Trigger a webhook when job is completed
+
+**Recommended Tools:**
+
+- Node.js
+- Express or Fastify
+- REST API architecture
+
+### 2.3 Database Requirements
+
+The database stores job information.
+
+**Recommended Database:**
+
+- SQLite or MySQL
+
+### 2.4 Optional (Bonus)
+
+- TypeScript
+- ORM (Prisma / Sequelize)
+- Docker
+
+---
+
+## 3. Step-by-Step Project Implementation (Logic First → Sample Code Second)
+
+### Step 1: Design Job Data
+
+**Logic (Detailed):**
+
+Before building UI, APIs, or DB tables, you must finalize **what a “Job” looks like** so every layer (frontend + backend + DB) speaks the same language.
+
+A job should contain:
+
+- **taskName**: A human-friendly name (e.g., “Send Email”, “Generate Report”)
+- **payload**: Extra job data needed for execution (e.g., email address, reportId). This should be flexible, so we store it as JSON.
+- **priority**: Helps sort and filter jobs. Example values: `Low`, `Medium`, `High`
+- **status**: Tracks job lifecycle. We will enforce a clean flow:
+    - `pending` → job is created but not started
+    - `running` → job is currently executing
+    - `completed` → job finished successfully
+        
+        *(Optional later: `failed`)*
+        
+- **timestamps** (recommended): `createdAt`, `updatedAt`, and optionally `completedAt` for tracking.
+
+Why this matters:
+
+- Frontend forms will send this structure.
+- Backend will validate and store this structure.
+- DB table design depends on these fields.
+- Filters and dashboard UI depend on `status` and `priority`.
+
+**Sample code :**
+
+```jsx
+job = {
+  taskName: 'Send Email',
+  payload: { email: 'a@b.com' },
+  priority: 'High',
+  status: 'pending'
+}
+
+```
+
+---
+
+### Step 2: Create Database Table
+
+**Logic (Detailed):**
+
+Now we store jobs permanently in MySQL so they don’t disappear when the server restarts.
+
+What you should do:
+
+1. Create a `jobs` table with columns matching the job data design.
+2. Use:
+    - `id` as the primary key (auto-increment)
+    - `payload` as `JSON` (MySQL supports JSON type)
+    - `status` and `priority` as strings (or enums if you want strictness)
+    - timestamps to track creation and updates automatically
+
+Important notes:
+
+- When a job is first created, **status must default to `pending`**.
+- You should store `payload` properly as JSON to avoid parsing issues later.
+- Add indexes (optional) on `status` and `priority` to make filtering faster.
+
+**Sample code :**
+
+```sql
+CREATE TABLE jobs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  taskName VARCHAR(255) NOT NULL,
+  payload JSON,
+  priority VARCHAR(20) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+```
+
+---
+
+### Step 3: Create Job API (POST /jobs)
+
+**Logic (Detailed):**
+
+This API is responsible for **creating a new job from the frontend form**.
+
+Flow:
+
+1. User fills the “Create Job” form on frontend.
+2. Frontend sends `taskName`, `payload`, `priority` to backend.
+3. Backend must:
+    - Read the request body
+    - Validate required fields (`taskName`, `priority`)
+    - Ensure `payload` is valid JSON (or set `{}` if empty)
+    - Set `status = 'pending'` **always** (user should not decide status)
+    - Insert into DB
+4. Return the created job (or at least the job id) to frontend.
+
+Why validation matters:
+
+- Without validation, bad payload can break job detail page and webhook.
+- Prevent empty task names, wrong priority values, etc.
+
+**Sample code :**
+
+```jsx
+const { taskName, payload, priority } = req.body;
+
+const status = 'pending';
+
+// Save into DB
+saveJob({ taskName, payload, priority, status });
+
+// Return success response
+res.json({ message: 'Job created successfully' });
+
+```
+
+---
+
+### Step 4: List Jobs API (GET /jobs)
+
+**Logic (Detailed):**
+
+Your dashboard needs to show **all jobs in a table**.
+
+This endpoint should:
+
+1. Fetch jobs from DB.
+2. Support optional filtering using query params like:
+    - `/jobs?status=pending`
+    - `/jobs?priority=High`
+    - `/jobs?status=running&priority=Low`
+3. Return the list in JSON format.
+
+Frontend usage:
+
+- On page load, call `/jobs`
+- If user selects a filter dropdown, call `/jobs?status=completed`
+- Then render table rows.
+
+**Sample code :**
+
+```jsx
+const jobs = getJobsFromDB(); // SELECT * FROM jobs
+res.json(jobs);
+
+```
+
+---
+
+### Step 5: Job Detail API (GET /jobs/:id)
+
+**Logic (Detailed):**
+
+When the user clicks a job row, they should see **full details**:
+
+- Task name
+- Status
+- Priority
+- Payload (formatted)
+- Created time / Updated time
+
+Backend responsibilities:
+
+1. Read `id` from route params
+2. Query DB: `SELECT * FROM jobs WHERE id = ?`
+3. If job not found → return 404
+4. Return job object
+
+Why this matters:
+
+- Dashboard table shows summary
+- Detail page shows full JSON payload and metadata
+
+**Sample code :**
+
+```jsx
+const { id } = req.params;
+const job = getJobById(id);
+
+res.json(job);
+
+```
+
+---
+
+### Step 6: Run Job API (POST /run-job/:id)
+
+**Logic (Detailed):**
+
+This endpoint simulates executing a job (like a background worker would).
+
+What “Run Job” should do:
+
+1. User clicks **Run** button on a `pending` job.
+2. Backend receives job id.
+3. Backend must:
+    - Check job exists
+    - If job already `running` or `completed`, prevent re-run (optional rule)
+    - Update status to `running`
+4. Simulate background processing:
+    - Wait 3 seconds (or longer)
+5. After wait:
+    - Update status to `completed`
+    - Save `completedAt` (optional but recommended)
+6. Trigger webhook automatically after completion.
+
+Important concept:
+
+- API should respond quickly (in real systems it queues a background worker).
+- For this assignment, simulation is fine.
+
+**Sample code :**
+
+```jsx
+updateStatus(id, 'running');
+
+setTimeout(() => {
+  updateStatus(id, 'completed');
+}, 3000);
+
+```
+
+---
+
+### Step 7: Trigger Webhook
+
+**Logic (Detailed):**
+
+When a job completes, your system must **notify an external service automatically**.
+
+Webhook trigger rules:
+
+- Trigger ONLY when status becomes `completed`
+- Send a POST request to a configured `WEBHOOK_URL`
+- Send job details like:
+    - jobId
+    - taskName
+    - status
+    - priority
+    - payload
+    - completedAt
+
+Why webhook matters:
+
+- It proves you can integrate systems (real-world automation)
+- External tools can react: update another DB, send Slack msg, etc.
+
+Error handling:
+
+- If webhook fails, you can log it.
+- (Optional) store webhook status in DB.
+
+**Sample code :**
+
+```jsx
+sendWebhook(WEBHOOK_URL, {
+  jobId: job.id,
+  status: 'completed'
+});
+
+```
+
+---
+
+### Step 8: Frontend – Create Job
+
+**Logic (Detailed):**
+
+Create a UI form that collects:
+
+- Task name (text input)
+- Priority (dropdown)
+- Payload (textarea JSON input OR key-value UI)
+
+When user clicks submit:
+
+1. Collect values into an object
+2. Send POST request to `/jobs`
+3. On success:
+    - Clear form
+    - Refresh job list (call `/jobs` again)
+    - Show a toast / success message
+
+Validation on frontend (recommended):
+
+- Task name must not be empty
+- Payload should be valid JSON (if you allow raw JSON)
+
+**Sample code :**
+
+```jsx
+fetch('/jobs', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(jobData)
+});
+
+```
+
+---
+
+### Step 9: Frontend – Dashboard
+
+**Logic (Detailed):**
+
+Dashboard should show:
+
+- Table of jobs (id, taskName, priority, status, createdAt)
+- Filters:
+    - status filter dropdown
+    - priority filter dropdown
+
+Flow:
+
+1. On page load → fetch `/jobs`
+2. Store jobs in state
+3. Render as table rows
+4. If user changes filter:
+    - Call `/jobs?status=...&priority=...`
+    - Update state with filtered list
+
+**Sample code :**
+
+```jsx
+useEffect(() => {
+  fetchJobs();
+}, []);
+
+```
+
+---
+
+### Step 10: Frontend – Run Job Button
+
+**Logic (Detailed):**
+
+Each job row should have a **Run** button.
+
+Rules (recommended):
+
+- Show Run button only if status is `pending`
+- Disable button if `running`
+- Hide or show “Completed” badge if completed
+
+When user clicks Run:
+
+1. Send POST request to `/run-job/:id`
+2. Refresh jobs list (poll or refetch)
+3. UI should show status change:
+    - pending → running → completed
+
+**Sample code :**
+
+```jsx
+onClick={() => runJob(jobId)}
+
+```
+
+---
+
+### Step 11: Frontend – Job Detail View
+
+**Logic (Detailed):**
+
+When user clicks a job from dashboard:
+
+1. Route to `/jobs/:id` page
+2. Fetch job details using `/jobs/:id`
+3. Show:
+    - taskName, status, priority
+    - payload prettified (JSON formatted)
+    - timestamps
+
+Payload formatting:
+
+- Backend might return payload as JSON already
+- If stored as string, parse carefully using `JSON.parse()`
+
+**Sample code :**
+
+```jsx
+const payload = JSON.parse(job.payload);
+
+```
+
+---
+
+### Step 12: End-to-End Testing
+
+**Logic (Detailed):**
+
+Now verify the full system works from UI → backend → DB → webhook.
+
+Test checklist:
+
+1. Create a job from UI
+    - Confirm it appears in dashboard with status `pending`
+2. Apply filters
+    - Confirm status and priority filters work
+3. Click job → open detail view
+    - Confirm payload displays correctly
+4. Click Run
+    - Confirm status updates:
+        - `pending` → `running` → `completed`
+5. Confirm webhook triggers
+    - Use a test webhook site (like webhook.site) and verify payload received
+
+Expected flow:
+
+```
+Create → Pending → Run → Running → Completed → Webhook
+
+```
+
+---
+
+## 4. Project Structure
+
+### Sample Folder Structure
+
+```
+root-project/
+│
+├── frontend/
+│   ├── pages/
+│   ├── components/
+│   ├── services/   (API calls)
+│   └── styles/
+│
+├── backend/
+│   ├── routes/
+│   ├── controllers/
+│   ├── services/
+│   ├── database/
+│   └── app.js
+│
+└── README.md
+
+```
+
+---
+
+## 5. Example Code Snippets
+
+---
+
+### 5.1 Database Insert Logic (Create Job)
+
+When user creates a job, we store it in DB with default status `pending`.
+
+```jsx
+// step 1: get data from request
+const taskName = req.body.taskName;
+const payload = req.body.payload;
+const priority = req.body.priority;
+
+// step 2: prepare job object
+const jobData = {
+  taskName: taskName,
+  payload: JSON.stringify(payload),
+  priority: priority,
+  status: 'pending'
+};
+
+// step 3: save jobData into database
+
+```
+
+---
+
+### 5.2 Fetch Jobs Logic (Dashboard List)
+
+Frontend requests all jobs → backend fetches from DB → returns list.
+
+```jsx
+// backend logic
+const jobs = database.query('SELECT * FROM jobs');
+
+// send jobs back to frontend
+res.json(jobs);
+
+```
+
+---
+
+### 5.3 Filter Jobs Logic (Status / Priority)
+
+User selects filter → backend applies condition.
+
+```jsx
+let query = 'SELECT * FROM jobs WHERE 1=1';
+
+if (status) {
+  query += ` AND status = '${status}'`;
+}
+
+if (priority) {
+  query += ` AND priority = '${priority}'`;
+}
+
+```
+
+---
+
+### 5.4 Run Job Logic (Status Flow)
+
+- Job starts → running
+- Wait 3 seconds
+- Job finishes → completed
+
+```jsx
+// set job to running
+updateJobStatus(jobId, 'running');
+
+// simulate background work
+setTimeout(() => {
+  updateJobStatus(jobId, 'completed');
+}, 3000);
+
+```
+
+---
+
+### 5.5 Webhook Trigger Logic
+
+When job completes → notify another system automatically.
+
+```jsx
+const webhookPayload = {
+  jobId: job.id,
+  taskName: job.taskName,
+  priority: job.priority,
+  payload: job.payload,
+  completedAt: new Date()
+};
+
+// send data to external webhook
+sendPostRequest(WEBHOOK_URL, webhookPayload);
+
+```
+
+---
+
+### 5.6 Frontend: Create Job Form Logic
+
+User fills form → click submit → API is called.
+
+```jsx
+const jobData = {
+  taskName: inputTaskName,
+  payload: inputPayload,
+  priority: selectedPriority
+};
+
+fetch('/jobs', {
+  method: 'POST',
+  body: JSON.stringify(jobData)
+});
+
+```
+
+---
+
+### 5.7 Frontend: Run Job Button Logic
+
+Button click → run job API is triggered.
+
+```jsx
+function runJob(jobId) {
+  fetch(`/run-job/${jobId}`, {
+    method: 'POST'
+  });
+}
+
+```
+
+---
+
+### 5.8 Job Detail View Logic
+
+User clicks job → fetch single job → show formatted payload.
+
+```jsx
+const job = fetch(`/jobs/${id}`);
+
+// convert JSON string to readable format
+const payloadObject = JSON.parse(job.payload);
+
+```
+
+---
+
+## 6. Beginner Execution Flow
+
+1. First build **database table**
+2. Then create **POST /jobs** API
+3. Then create **GET /jobs** API
+4. Test APIs using Postman
+5. Then build frontend screens
+6. Finally add **run job + webhook**
+
+Follow this order to avoid confusion.
+
+---
